@@ -1,0 +1,116 @@
+package com.k_tten.tfih.fabric.helper
+
+import com.google.common.collect.Lists
+import com.google.common.primitives.Shorts
+import com.google.common.primitives.SignedBytes
+import com.k_tten.tfih.fabric.TfihFabric
+import com.k_tten.tfih.fabric.Utilities.screen
+import com.k_tten.tfih.fabric.helper.ChatHelper.launchWithSafeguard
+import it.unimi.dsi.fastutil.ints.Int2ObjectMap
+import it.unimi.dsi.fastutil.ints.Int2ObjectOpenHashMap
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import net.minecraft.client.Minecraft
+import net.minecraft.core.NonNullList
+import net.minecraft.network.HashedStack
+import net.minecraft.network.protocol.game.ServerboundContainerClickPacket
+import net.minecraft.world.entity.player.Player
+//? if >= 26.1 {
+import net.minecraft.world.inventory.ContainerInput
+//? } else
+//import net.minecraft.world.inventory.ClickType
+import net.minecraft.world.inventory.Slot
+import net.minecraft.world.item.Item
+import net.minecraft.world.item.ItemStack
+import java.util.function.Predicate
+import kotlin.time.Duration.Companion.milliseconds
+
+object InventoryHelper {
+    /**
+     * Same as {@link net.minecraft.client.multiplayer.MultiPlayerGameMode#handleContainerInput} but without the sync check.
+     */
+
+    fun clickSlotUnchecked(
+        containerId: Int,
+        slotNum: Int,
+        buttonNum: Int,
+        //? if >= 26.1 {
+        containerInput: ContainerInput,
+        //? } else
+        //containerInput: ClickType,
+        player: Player
+    ) {
+        val containerMenu = player.containerMenu
+        val connection = Minecraft.getInstance().connection!!
+
+        val slots: NonNullList<Slot> = containerMenu.slots
+        val slotCount = slots.size
+        val itemsBeforeClick: MutableList<ItemStack?> = Lists.newArrayListWithCapacity(slotCount)
+
+        for (slot in slots) {
+            itemsBeforeClick.add(slot.item.copy())
+        }
+
+        containerMenu.clicked(slotNum, buttonNum, containerInput, player)
+        val changedSlots: Int2ObjectMap<HashedStack> = Int2ObjectOpenHashMap()
+
+        for (i in 0..<slotCount) {
+            val before = itemsBeforeClick[i] as ItemStack
+            val after = slots[i].item
+            if (!ItemStack.matches(before, after)) {
+                changedSlots.put(i, HashedStack.create(after, connection.decoratedHashOpsGenenerator()))
+            }
+        }
+
+        val carriedItem = HashedStack.create(containerMenu.carried, connection.decoratedHashOpsGenenerator())
+        connection.send(
+                ServerboundContainerClickPacket(
+                    containerId,
+                    containerMenu.stateId,
+                    Shorts.checkedCast(slotNum.toLong()),
+                    SignedBytes.checkedCast(buttonNum.toLong()),
+                    containerInput,
+                    changedSlots,
+                    carriedItem
+                )
+            )
+    }
+
+    fun findItemType(client: Minecraft, item: Item): Int? = findItemInHotbarByPredicate(client) {
+        it?.item == item
+    }
+
+    fun findItemInHotbarByPredicate(client: Minecraft, predicate: Predicate<ItemStack?>): Int? {
+        for (i in 0..<9) {
+            if (predicate.test(client.player?.inventory?.getItem(i)))
+                return i
+        }
+        return null
+    }
+
+    fun clickSlotAndReturnCoroutine(scope: CoroutineScope, client: Minecraft, slot: Int): Job {
+        val currentSlot = client.player!!.inventory.selectedSlot
+        return scope.launchWithSafeguard {
+            changeSlot(client, slot)
+            inventoryInteractDelay()
+            client.execute { client.startUseItem() }
+            inventoryInteractDelay()
+            changeSlot(client, currentSlot)
+        }
+    }
+
+    suspend fun inventoryInteractDelay() {
+        val random = TfihFabric.RANDOM
+        delay(random.nextLong(50, 100).milliseconds)
+    }
+
+    fun changeSlot(client: Minecraft, slot: Int) {
+        client.execute {
+            if (client.screen() != null || client.isPaused) return@execute
+            client.player!!.inventory.selectedSlot = slot
+        }
+    }
+
+
+}

@@ -1,0 +1,29 @@
+{
+    "schemaVersion": 1,
+    "id": "${id}",
+    "version": "${version}",
+    "name": "${name}",
+    "description": "trofihing",
+    "authors": ["k-tten"],
+    "license": "MIT",
+    "environment": "client",
+    "entrypoints": {
+        "main": [
+            {
+                "value": "com.k_tten.tfih.fabric.TfihFabric",
+                "adapter": "kotlin"
+            }
+        ]
+    },
+    "mixins": ["tfih.mixins.json"],
+    "custom": { "firmament:hide_from_modlist": true },
+    "accessWidener": "tfih-${aw_file}",
+    "depends": {
+        "fabricloader": ">=${fabric_loader}",
+        "minecraft": "${minecraft}",
+        "java": ">=${java_version}",
+        "fabric-api": "*",
+        "fabric-language-kotlin": "*"
+    },
+    "icon": "assets/tfih/icon.png"
+}
