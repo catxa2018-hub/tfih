@@ -60,6 +60,22 @@ object ConfigCommands {
                             )
                     )
                     .then(
+                        LiteralArgumentBuilder.literal<FabricClientCommandSource>("auto-gg")
+                            .then(
+                                com.mojang.brigadier.builder.RequiredArgumentBuilder.argument<FabricClientCommandSource, Boolean>(
+                                    "value",
+                                    BoolArgumentType.bool()
+                                ).executes {
+                                    configManager.config.autoGg =
+                                        BoolArgumentType.getBool(it, "value")
+                                    saveAndReport(
+                                        configManager,
+                                        "Auto-gg enabled: ${configManager.config.autoGg}"
+                                    )
+                                }
+                            )
+                    )
+                    .then(
                         LiteralArgumentBuilder.literal<FabricClientCommandSource>("jump")
                             .then(
                                 com.mojang.brigadier.builder.RequiredArgumentBuilder.argument<FabricClientCommandSource, Boolean>(
@@ -139,6 +155,7 @@ object ConfigCommands {
         val fishing = configManager.config.fishing
         ChatHelper.sendToChat("§6tfih fishing configuration")
         ChatHelper.sendToChat("Umberella enabled: ${configManager.config.umberella}")
+        ChatHelper.sendToChat("Auto-gg enabled: ${configManager.config.autoGg}")
         ChatHelper.sendToChat("Enabled: ${fishing.enabled}")
         ChatHelper.sendToChat("Jump mode: ${fishing.jumpMode}")
         ChatHelper.sendToChat("Bobber check interval: ${fishing.bobberCheckAverageSeconds} seconds average (±5 seconds)")
@@ -146,7 +163,7 @@ object ConfigCommands {
         ChatHelper.sendToChat("Water catch delay: ${fishing.timings.waterAverage} ms")
         ChatHelper.sendToChat("Lava catch delay: ${fishing.timings.lavaAverage} ms")
         ChatHelper.sendToChat("Rod cast delay: ${fishing.timings.castAverage} ms")
-        ChatHelper.sendToChat("Use /tfih set <enabled|umberella|jump|bobber-check|distribution|water|lava|cast> <value> to change a setting.")
+        ChatHelper.sendToChat("Use /tfih set <enabled|umberella|auto-gg|jump|bobber-check|distribution|water|lava|cast> <value> to change a setting.")
         return Command.SINGLE_SUCCESS
     }
 

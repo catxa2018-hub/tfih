@@ -6,6 +6,7 @@ A hypixel <span style="font-size:7px">~~macro~~</span> improvement mod for Hypix
 ### Feature list
 - **Fishing**: Automatically reel and throw bobber; periodically checks for a missing bobber near water or lava and casts when a fishing rod is already selected
 - **Umberella**: Periodically jump, use a hotbar item whose name or lore contains "Umberella", then cast the fishing rod
+- **Shining Diamond**: Optionally sends "gg" in chat a random 3-5 seconds after a single chat message contains "SHINING!" followed by " caught their first DIAMOND " (disabled by default)
 
 ### Configuration
 
@@ -19,6 +20,7 @@ Use `/tfih` or `/tfih view` in chat to view the current fishing settings. Change
 - `/tfih set lava <milliseconds>`
 - `/tfih set cast <milliseconds>`
 - `/tfih set umberella <true|false>`
+- `/tfih set auto-gg <true|false>`
 - `/tfih testumb` to run the Umberella action once immediately
 
 Delay values can be from 0 to 1000 milliseconds. Changes are saved to the mod configuration file automatically.
