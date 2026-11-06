@@ -8,6 +8,7 @@ class Config {
     val fishing: Fishing = Fishing()
     var umberella: Boolean = false
     var autoGg: Boolean = false
+    var goldenFish: Boolean = false
 
     class Range(val min: Long, val max: Long) {
         override fun toString(): String = "$min..$max"

@@ -76,6 +76,26 @@ object ConfigCommands {
                             )
                     )
                     .then(
+                        LiteralArgumentBuilder.literal<FabricClientCommandSource>("slugfish")
+                            .then(
+                                com.mojang.brigadier.builder.RequiredArgumentBuilder.argument<FabricClientCommandSource, Double>(
+                                    "seconds",
+                                    DoubleArgumentType.doubleArg(0.0)
+                                ).executes {
+                                    configManager.config.fishing.slugfishSeconds =
+                                        DoubleArgumentType.getDouble(it, "seconds")
+                                    saveAndReport(
+                                        configManager,
+                                        if (configManager.config.fishing.slugfishSeconds == 0.0) {
+                                            "Slugfish delay disabled."
+                                        } else {
+                                            "Slugfish delay: ${configManager.config.fishing.slugfishSeconds} seconds."
+                                        }
+                                    )
+                                }
+                            )
+                    )
+                    .then(
                         LiteralArgumentBuilder.literal<FabricClientCommandSource>("jump")
                             .then(
                                 com.mojang.brigadier.builder.RequiredArgumentBuilder.argument<FabricClientCommandSource, Boolean>(
@@ -85,6 +105,26 @@ object ConfigCommands {
                                     configManager.config.fishing.jumpMode =
                                         BoolArgumentType.getBool(it, "value")
                                     saveAndReport(configManager, "Fishing jump mode: ${configManager.config.fishing.jumpMode}")
+                                }
+                            )
+                    )
+                    .then(
+                        LiteralArgumentBuilder.literal<FabricClientCommandSource>("golden-fish")
+                            .then(
+                                com.mojang.brigadier.builder.RequiredArgumentBuilder.argument<FabricClientCommandSource, Boolean>(
+                                    "value",
+                                    BoolArgumentType.bool()
+                                ).executes {
+                                    configManager.config.goldenFish =
+                                        BoolArgumentType.getBool(it, "value")
+                                    saveAndReport(
+                                        configManager,
+                                        if (configManager.config.goldenFish) {
+                                            "WARNING: Golden Fish automation is risky; it automatically aims, casts, and repeatedly clicks. Golden Fish enabled."
+                                        } else {
+                                            "Golden Fish disabled."
+                                        }
+                                    )
                                 }
                             )
                     )
@@ -156,14 +196,19 @@ object ConfigCommands {
         ChatHelper.sendToChat("§6tfih fishing configuration")
         ChatHelper.sendToChat("Umberella enabled: ${configManager.config.umberella}")
         ChatHelper.sendToChat("Auto-gg enabled: ${configManager.config.autoGg}")
+        ChatHelper.sendToChat("Golden Fish enabled: ${configManager.config.goldenFish}")
         ChatHelper.sendToChat("Enabled: ${fishing.enabled}")
         ChatHelper.sendToChat("Jump mode: ${fishing.jumpMode}")
+        ChatHelper.sendToChat("Slugfish delay: ${fishing.slugfishSeconds} seconds (0 = disabled)")
         ChatHelper.sendToChat("Bobber check interval: ${fishing.bobberCheckAverageSeconds} seconds average (±5 seconds)")
         ChatHelper.sendToChat("Timing distribution: ${fishing.timings.distribution}")
         ChatHelper.sendToChat("Water catch delay: ${fishing.timings.waterAverage} ms")
         ChatHelper.sendToChat("Lava catch delay: ${fishing.timings.lavaAverage} ms")
         ChatHelper.sendToChat("Rod cast delay: ${fishing.timings.castAverage} ms")
-        ChatHelper.sendToChat("Use /tfih set <enabled|umberella|auto-gg|jump|bobber-check|distribution|water|lava|cast> <value> to change a setting.")
+        ChatHelper.sendToChat("Use /tfih set <enabled|umberella|auto-gg|golden-fish|jump|slugfish|bobber-check|distribution|water|lava|cast> <value> to change a setting.")
+        if (configManager.config.goldenFish) {
+            ChatHelper.sendToChat("§cWARNING: Golden Fish automation is risky; it automatically aims, casts, and repeatedly clicks.")
+        }
         return Command.SINGLE_SUCCESS
     }
 

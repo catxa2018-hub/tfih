@@ -18,6 +18,7 @@ import net.minecraft.world.entity.projectile.FishingHook
 import net.minecraft.world.item.Items
 import net.minecraft.world.level.material.Fluids
 import net.minecraft.world.phys.Vec3
+import java.util.UUID
 import kotlin.math.roundToLong
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -28,6 +29,8 @@ object Fishing : Feature {
     private const val NEARBY_FLUID_RADIUS = 4
     private var wasEnabledForBobberCheck = false
     private var nextBobberCheckAtNanos = 0L
+    private var liquidHookId: UUID? = null
+    private var liquidSinceNanos = 0L
 
     val config
         get() = TfihFabric.INSTANCE.configManager.config.fishing
@@ -35,7 +38,11 @@ object Fishing : Feature {
     var fishJob: Job? = null
 
     @JvmStatic
-    fun launchFishJob(range: Range?): Job = COROUTINE_SCOPE.launchWithSafeguard {
+    fun launchFishJob(
+        range: Range?,
+        slugfishDelayMillis: Long = 0L,
+        expectedHookId: UUID? = null
+    ): Job = COROUTINE_SCOPE.launchWithSafeguard {
         val mc = Minecraft.getInstance()
 
         if (range == null) {
@@ -47,6 +54,10 @@ object Fishing : Feature {
             }
             return@launchWithSafeguard
         }
+
+        if (slugfishDelayMillis > 0) delay(slugfishDelayMillis.milliseconds)
+        if (expectedHookId != null && mc.player?.fishing?.uuid != expectedHookId)
+            return@launchWithSafeguard
 
         delay(range.getRandomValue().milliseconds)
         if (mc.player?.mainHandItem?.item != Items.FISHING_ROD)
@@ -85,7 +96,21 @@ object Fishing : Feature {
         }
 
         maintainBobber(minecraftClient)
-        val fishHook = minecraftClient.player?.fishing ?: return@runBlocking
+        val fishHook = minecraftClient.player?.fishing ?: run {
+            liquidHookId = null
+            liquidSinceNanos = 0L
+            return@runBlocking
+        }
+        val now = System.nanoTime()
+        if (isHookInLiquid(minecraftClient, fishHook)) {
+            if (liquidHookId != fishHook.uuid) {
+                liquidHookId = fishHook.uuid
+                liquidSinceNanos = now
+            }
+        } else {
+            liquidHookId = null
+            liquidSinceNanos = 0L
+        }
 
         val catching = fishHook.level().getEntities(
             //? if >= 26.2 {
@@ -107,8 +132,20 @@ object Fishing : Feature {
         fishMutex.withLock {
             if (fishJob?.isActive == true) return@withLock
             TfihFabric.LOGGER.debug("Starting job using armor stand method")
-            fishJob = launchFishJob(fluid.getRange())
+            val configuredDelayNanos =
+                (config.slugfishSeconds.coerceAtLeast(0.0) * 1_000_000_000.0).toLong()
+            val elapsedNanos = if (liquidHookId == fishHook.uuid) now - liquidSinceNanos else 0L
+            val remainingMillis =
+                ((configuredDelayNanos - elapsedNanos).coerceAtLeast(0L) + 999_999L) / 1_000_000L
+            fishJob = launchFishJob(fluid.getRange(), remainingMillis, fishHook.uuid)
         }
+    }
+
+    private fun isHookInLiquid(client: Minecraft, fishHook: FishingHook): Boolean {
+        val level = client.level ?: return false
+        val fluid = level.getBlockState(fishHook.blockPosition()).fluidState.type
+        return fluid == Fluids.WATER || fluid == Fluids.FLOWING_WATER ||
+            fluid == Fluids.LAVA || fluid == Fluids.FLOWING_LAVA
     }
 
     private fun maintainBobber(client: Minecraft) {

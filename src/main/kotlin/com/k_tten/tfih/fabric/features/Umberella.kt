@@ -36,10 +36,21 @@ object Umberella : Feature {
         get() = TfihFabric.INSTANCE.configManager.config
 
     fun requestTestRun(): Boolean {
+        return requestForcedRun()
+    }
+
+    fun requestForcedRun(): Boolean {
         if (state != ActionState.IDLE || testRunRequested) return false
         testRunRequested = true
         nextActionAtNanos = 0L
         return true
+    }
+
+    val isActionInProgress: Boolean
+        get() = state != ActionState.IDLE || testRunRequested || testRunActive
+
+    fun resetTimer() {
+        scheduleNextAction()
     }
 
     override fun init(mc: Minecraft) {

@@ -1,6 +1,7 @@
 package com.k_tten.tfih.fabric
 
 import com.k_tten.tfih.fabric.features.Fishing
+import com.k_tten.tfih.fabric.features.GoldenFish
 import com.k_tten.tfih.fabric.features.ShiningDiamond
 import com.k_tten.tfih.fabric.features.Umberella
 import com.k_tten.tfih.fabric.config.Config
@@ -29,7 +30,7 @@ class TfihFabric: ModInitializer {
         }
         val RANDOM = Random(System.currentTimeMillis())
 
-        val FEATURE_LIST = listOf(Fishing, Umberella, ShiningDiamond)
+        val FEATURE_LIST = listOf(Fishing, Umberella, GoldenFish, ShiningDiamond)
     }
 
     lateinit var configManager: ConfigManager

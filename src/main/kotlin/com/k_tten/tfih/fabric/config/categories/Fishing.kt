@@ -4,6 +4,7 @@ class Fishing {
     var enabled: Boolean = false
     var jumpMode: Boolean = false
     var bobberCheckAverageSeconds: Double = 60.0
+    var slugfishSeconds: Double = 0.0
 
     var timings = FishingTimings()
 
