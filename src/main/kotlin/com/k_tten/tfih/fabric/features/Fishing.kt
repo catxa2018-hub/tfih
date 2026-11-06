@@ -31,11 +31,23 @@ object Fishing : Feature {
     private var nextBobberCheckAtNanos = 0L
     private var liquidHookId: UUID? = null
     private var liquidSinceNanos = 0L
+    @Volatile
+    private var pausedForGoldenFish = false
 
     val config
         get() = TfihFabric.INSTANCE.configManager.config.fishing
     var fishMutex: Mutex = Mutex()
     var fishJob: Job? = null
+
+    fun pauseForGoldenFish() {
+        pausedForGoldenFish = true
+        fishJob?.cancel()
+        fishJob = null
+    }
+
+    fun resumeAfterGoldenFish() {
+        pausedForGoldenFish = false
+    }
 
     @JvmStatic
     fun launchFishJob(
@@ -44,10 +56,12 @@ object Fishing : Feature {
         expectedHookId: UUID? = null
     ): Job = COROUTINE_SCOPE.launchWithSafeguard {
         val mc = Minecraft.getInstance()
+        if (pausedForGoldenFish) return@launchWithSafeguard
 
         if (range == null) {
             delay(spread(config.timings.castAverage).getRandomValue().milliseconds)
             mc.execute {
+                if (pausedForGoldenFish) return@execute
                 val player = mc.player ?: return@execute
                 if (player.mainHandItem.item == Items.FISHING_ROD && player.fishing == null)
                     mc.startUseItem()
@@ -60,11 +74,12 @@ object Fishing : Feature {
             return@launchWithSafeguard
 
         delay(range.getRandomValue().milliseconds)
+        if (pausedForGoldenFish) return@launchWithSafeguard
         if (mc.player?.mainHandItem?.item != Items.FISHING_ROD)
             return@launchWithSafeguard
         if (config.jumpMode) {
             mc.execute {
-                mc.options.keyJump.setDown(true)
+                if (!pausedForGoldenFish) mc.options.keyJump.setDown(true)
             }
             try {
                 delay(75.milliseconds)
@@ -78,18 +93,19 @@ object Fishing : Feature {
                 return@launchWithSafeguard
         }
         mc.execute {
-            mc.startUseItem()
+            if (!pausedForGoldenFish) mc.startUseItem()
         }
 
         delay(spread(config.timings.castAverage).getRandomValue().milliseconds)
         if (mc.player?.mainHandItem?.item != Items.FISHING_ROD)
             return@launchWithSafeguard
         mc.execute {
-            mc.startUseItem()
+            if (!pausedForGoldenFish) mc.startUseItem()
         }
     }
 
     fun onTick(minecraftClient: Minecraft) = runBlocking {
+        if (pausedForGoldenFish) return@runBlocking
         if (!config.enabled) {
             wasEnabledForBobberCheck = false
             return@runBlocking
@@ -227,6 +243,7 @@ object Fishing : Feature {
     }
 
     private fun ensureBobberOut() {
+        if (pausedForGoldenFish) return
         val player = Minecraft.getInstance().player ?: return
         if (!config.enabled || player.mainHandItem.item != Items.FISHING_ROD || player.fishing != null)
             return

@@ -18,6 +18,7 @@ object GoldenFish : Feature {
     private const val SEARCH_RADIUS = 8.0
     private const val LAVA_RADIUS = 2
     private const val AIM_DURATION_NANOS = 400_000_000L
+    private const val ROTATION_RESTORE_DURATION_NANOS = 400_000_000L
     private const val CAST_WAIT_NANOS = 300_000_000L
     private const val RESIST_TIMEOUT_NANOS = 700_000_000L
     private const val CLICK_INTERVAL_NANOS = 150_000_000L
@@ -35,7 +36,8 @@ object GoldenFish : Feature {
         WAITING_FOR_RESISTANCE,
         RESISTING,
         CLICKING_AFTER_WEAK,
-        WAITING_FOR_TROPHY
+        WAITING_FOR_TROPHY,
+        RESTORING_ROTATION
     }
 
     private var state = State.IDLE
@@ -44,42 +46,60 @@ object GoldenFish : Feature {
     private var aimStartedAtNanos = 0L
     private var startYaw = 0f
     private var startPitch = 0f
+    private var originalYaw = 0f
+    private var originalPitch = 0f
+    private var rotationRestoreStartedAtNanos = 0L
+    private var rotationRestoreStartYaw = 0f
+    private var rotationRestoreStartPitch = 0f
+    private var rotationChanged = false
+    private var caughtGoldenFish = false
     private var warnedAboutJumpMode = false
+    private var fishingPaused = false
 
     private val isEnabled
         get() = TfihFabric.INSTANCE.configManager.config.goldenFish
 
     override fun init(mc: Minecraft) {
         ClientReceiveMessageEvents.GAME.register { message, _ ->
-            val text = message.string
-            if (!isEnabled) return@register
-
-            when {
-                text.contains("You spot a Golden Fish surface from beneath the lava!") -> startSearch()
-                state == State.IDLE -> Unit
-                text.contains("The Golden Fish is resisting...") -> {
-                    state = State.RESISTING
-                    deadlineNanos = System.nanoTime()
-                }
-                text.contains("The Golden Fish escapes your hook but looks weakened.") -> {
-                    state = State.CHECKPOINT
-                }
-                text.contains("The Golden Fish is weak!") -> {
-                    state = State.CLICKING_AFTER_WEAK
-                    deadlineNanos = System.nanoTime() + CLICK_INTERVAL_NANOS
-                }
-                text.contains("TROPHY FISH! You caught a Golden Fish") -> {
-                    ensureBobberOut(mc)
-                    finish()
-                }
+            mc.execute {
+                if (!isEnabled) return@execute
+                handleGameMessage(mc, message.string)
             }
         }
 
         ClientTickEvents.END_CLIENT_TICK.register(ClientTickEvents.EndTick(::onTick))
     }
 
-    private fun startSearch() {
+    private fun handleGameMessage(mc: Minecraft, text: String) {
+        when {
+            text.contains("You spot a Golden Fish surface from beneath the lava!") -> startSearch(mc)
+            state == State.IDLE -> Unit
+            text.contains("The Golden Fish is resisting...") -> {
+                state = State.RESISTING
+                deadlineNanos = System.nanoTime()
+            }
+            text.contains("The Golden Fish escapes your hook but looks weakened.") -> {
+                state = State.CHECKPOINT
+            }
+            text.contains("The Golden Fish is weak!") -> {
+                state = State.CLICKING_AFTER_WEAK
+                deadlineNanos = System.nanoTime() + CLICK_INTERVAL_NANOS
+            }
+            text.contains("TROPHY FISH! You caught a Golden Fish") -> {
+                caughtGoldenFish = true
+                startRotationRestore(mc)
+            }
+        }
+    }
+
+    private fun startSearch(mc: Minecraft) {
         if (state != State.IDLE) return
+        val player = mc.player ?: return
+        originalYaw = player.yRot
+        originalPitch = player.xRot
+        rotationChanged = false
+        Fishing.pauseForGoldenFish()
+        fishingPaused = true
         state = State.FINDING_TARGET
         target = null
         deadlineNanos = System.nanoTime() + TARGET_SEARCH_TIMEOUT_NANOS
@@ -151,8 +171,12 @@ object GoldenFish : Feature {
                 val progress = ((now - aimStartedAtNanos).toDouble() / AIM_DURATION_NANOS)
                     .coerceIn(0.0, 1.0).toFloat()
                 val (yaw, pitch) = getLookAngles(player, stand)
-                player.setYRot(lerpAngle(startYaw, yaw, progress))
-                player.setXRot(startPitch + (pitch - startPitch) * progress)
+                rotationChanged = true
+                setPlayerRotation(
+                    player,
+                    lerpAngle(startYaw, yaw, progress),
+                    startPitch + (pitch - startPitch) * progress
+                )
                 if (progress >= 1.0f) {
                     if (player.fishing != null) {
                         mc.startUseItem()
@@ -201,6 +225,19 @@ object GoldenFish : Feature {
             }
             State.WAITING_FOR_TROPHY -> {
                 if (now >= deadlineNanos) state = State.CHECKPOINT
+            }
+            State.RESTORING_ROTATION -> {
+                val progress = ((now - rotationRestoreStartedAtNanos).toDouble() /
+                    ROTATION_RESTORE_DURATION_NANOS).coerceIn(0.0, 1.0).toFloat()
+                setPlayerRotation(
+                    player,
+                    lerpAngle(rotationRestoreStartYaw, originalYaw, progress),
+                    rotationRestoreStartPitch + (originalPitch - rotationRestoreStartPitch) * progress
+                )
+                if (progress >= 1.0f) {
+                    setPlayerRotation(player, originalYaw, originalPitch)
+                    finish()
+                }
             }
         }
     }
@@ -255,20 +292,54 @@ object GoldenFish : Feature {
     }
 
     private fun ensureBobberOut(mc: Minecraft) {
-        mc.execute {
-            val player = mc.player ?: return@execute
-            if (player.fishing == null && player.mainHandItem.item == Items.FISHING_ROD) {
-                mc.startUseItem()
-            } else if (player.mainHandItem.item != Items.FISHING_ROD) {
-                ChatHelper.sendToChat("Golden Fish caught, but no fishing rod is held to cast the bobber.")
-            }
+        val player = mc.player ?: return
+        if (player.fishing == null && player.mainHandItem.item == Items.FISHING_ROD) {
+            mc.startUseItem()
+        } else if (player.mainHandItem.item != Items.FISHING_ROD) {
+            ChatHelper.sendToChat("Golden Fish caught, but no fishing rod is held to cast the bobber.")
         }
     }
 
+    private fun startRotationRestore(mc: Minecraft) {
+        val player = mc.player
+        if (player == null) {
+            finish()
+            return
+        }
+        rotationRestoreStartYaw = player.yRot
+        rotationRestoreStartPitch = player.xRot
+        rotationRestoreStartedAtNanos = System.nanoTime()
+        state = State.RESTORING_ROTATION
+    }
+
+    private fun setPlayerRotation(
+        player: net.minecraft.client.player.LocalPlayer,
+        yaw: Float,
+        pitch: Float
+    ) {
+        player.setYRot(yaw)
+        player.setXRot(pitch)
+        player.setYHeadRot(yaw)
+        player.setYBodyRot(yaw)
+    }
+
     private fun finish() {
+        if (rotationChanged) {
+            Minecraft.getInstance().player?.let { setPlayerRotation(it, originalYaw, originalPitch) }
+        }
+        if (caughtGoldenFish) {
+            ensureBobberOut(Minecraft.getInstance())
+            caughtGoldenFish = false
+        }
+        if (fishingPaused) {
+            Fishing.resumeAfterGoldenFish()
+            fishingPaused = false
+        }
         state = State.IDLE
         target = null
         deadlineNanos = 0L
         aimStartedAtNanos = 0L
+        rotationRestoreStartedAtNanos = 0L
+        rotationChanged = false
     }
 }
